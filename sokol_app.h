@@ -1347,6 +1347,8 @@ typedef struct sapp_desc {
     void (*event_userdata_cb)(const sapp_event*, void*);
     void (*fail_userdata_cb)(const char*, void*);
 
+    int pos_x;
+    int pos_y;
     int width;                          // the preferred width of the window / canvas
     int height;                         // the preferred height of the window / canvas
     int sample_count;                   // MSAA sample count
@@ -6133,16 +6135,22 @@ _SOKOL_PRIVATE void _sapp_win32_toggle_fullscreen(void) {
         win_style = WS_POPUP | WS_SYSMENU | WS_VISIBLE;
         rect.right = monitor_w;
         rect.bottom = monitor_h;
+
+        RECT old; 
+        GetWindowRect(_sapp.win32.hwnd, &old);
+        _sapp.desc.width=old.right-old.left;
+        _sapp.desc.height=old.bottom-old.top;
+        _sapp.desc.pos_x=old.left;
+        _sapp.desc.pos_y=old.top;
     }
     AdjustWindowRectEx(&rect, win_style, FALSE, win_ex_style);
     int win_width = rect.right - rect.left;
     int win_height = rect.bottom - rect.top;
-    if (!_sapp.fullscreen) {
-        rect.left = (monitor_w - win_width) / 2;
-        rect.top = (monitor_h - win_height) / 2;
-    }
 
     SetWindowLongPtr(_sapp.win32.hwnd, GWL_STYLE, win_style);
+    if (!_sapp.fullscreen) 
+        SetWindowPos(_sapp.win32.hwnd, HWND_TOP, _sapp.desc.pos_x, _sapp.desc.pos_y, _sapp.desc.width, _sapp.desc.height, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    else 
     SetWindowPos(_sapp.win32.hwnd, HWND_TOP, mr.left + rect.left, mr.top + rect.top, win_width, win_height, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 }
 
@@ -6736,10 +6744,18 @@ _SOKOL_PRIVATE void _sapp_win32_restore_console(void) {
 }
 
 _SOKOL_PRIVATE void _sapp_win32_init_dpi(void) {
-    
-    DECLARE_HANDLE(DPI_AWARENESS_CONTEXT_T);
+
+    // For older windows SDK headers
+    #ifndef _DPI_AWARENESS_CONTEXTS_
+        DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+    #endif
+
+    #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (DPI_AWARENESS_CONTEXT)-4
+    #endif
+
     typedef BOOL(WINAPI * SETPROCESSDPIAWARE_T)(void);
-    typedef bool (WINAPI * SETPROCESSDPIAWARENESSCONTEXT_T)(DPI_AWARENESS_CONTEXT_T); // since Windows 10, version 1703 
+    typedef bool (WINAPI * SETPROCESSDPIAWARENESSCONTEXT_T)(DPI_AWARENESS_CONTEXT); // since Windows 10, version 1703 
     typedef HRESULT(WINAPI * SETPROCESSDPIAWARENESS_T)(PROCESS_DPI_AWARENESS);
     typedef HRESULT(WINAPI * GETDPIFORMONITOR_T)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
 
@@ -6768,7 +6784,7 @@ _SOKOL_PRIVATE void _sapp_win32_init_dpi(void) {
             fn_setprocessdpiawareness(process_dpi_awareness); 
         }
         else {
-            if (!(_sapp.desc.win32_per_monitor_dpi_v2 && fn_setprocessdpiawarenesscontext&&fn_setprocessdpiawarenesscontext((DPI_AWARENESS_CONTEXT_T)-4)))
+            if (!(_sapp.desc.win32_per_monitor_dpi_v2 && fn_setprocessdpiawarenesscontext&&fn_setprocessdpiawarenesscontext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)))
                 fn_setprocessdpiawareness(process_dpi_awareness); // fallback system dpi aware
         }
     }
